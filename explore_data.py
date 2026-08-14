@@ -3,7 +3,7 @@ import pandas as pd
 
 def small_exploration(path):
     energy_df = pd.read_csv(path, sep=";")
-    headers = list(energy_df)
+    headers = energy_df.columns
     print(headers)
 
     # Line and column number
