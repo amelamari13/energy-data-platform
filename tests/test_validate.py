@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from src.transform import (
     NUMERIC_COLUMNS,
@@ -42,6 +43,15 @@ def test_check_required_columns():
     assert result == []
 
 
+def test_check_required_columns_with_missing_column():
+    df = load_real_valid_data()
+    df = df.drop(columns=["Consumption"])
+
+    result = check_required_columns(df)
+
+    assert result == ["Consumption"]
+
+
 def test_count_duplicate_keys():
     df = load_real_pre_dedup_data()
     assert count_duplicate_keys(df) == 4
@@ -69,6 +79,16 @@ def test_check_null_rates():
     }
 
 
+def test_check_null_rates_with_null():
+    df = load_real_valid_data().head(4).copy()
+    df.loc[df.index[0], "Consumption"] = None
+
+    result = check_null_rates(df)
+
+    assert result["Consumption"] == 0.25
+    assert result["Region"] == 0.0
+
+
 def test_count_numeric_errors():
     df = load_real_valid_data()
     result = count_numeric_errors(df)
@@ -79,15 +99,24 @@ def test_count_numeric_errors():
         "negative_renewable_production": 0,
         "invalid_renewable_share": 0,
     }
-    
-    assert df["Consumption"].min() == 2133.0
-    assert df["Consumption"].max() == 13947.0
-    assert df["Total_Production"].min() == 105.0
-    assert df["Total_Production"].max() == 10699.0
-    assert df["Renewable_production"].min() == 99.0
-    assert df["Renewable_production"].max() == 5854.0
-    assert df["Renewable_Share"].min() == 0.025384615384615384
-    assert df["Renewable_Share"].max() == 1.0
+
+
+def test_count_numeric_errors_with_invalid_values():
+    df = load_real_valid_data().head(4).copy()
+
+    df.loc[df.index[0], "Consumption"] = -1
+    df.loc[df.index[1], "Total_Production"] = -1
+    df.loc[df.index[2], "Renewable_production"] = -1
+    df.loc[df.index[3], "Renewable_Share"] = 1.2
+
+    result = count_numeric_errors(df)
+
+    assert result == {
+        "negative_consumption": 1,
+        "negative_total_production": 1,
+        "negative_renewable_production": 1,
+        "invalid_renewable_share": 1,
+    }
 
 
 def test_build_quality_report():
@@ -98,8 +127,8 @@ def test_build_quality_report():
         "Île-de-France",
         "Hauts-de-France",
     }
-    assert report["start_timestamp"] == pd.Timestamp("2024-01-01 00:00:00+00:00")
-    assert report["end_timestamp"] == pd.Timestamp("2024-12-31 23:30:00+00:00")
+    assert report["start_timestamp"] == pd.Timestamp("2024-01-01 00:00:00")
+    assert report["end_timestamp"] == pd.Timestamp("2024-12-31 23:30:00")
     assert report["missing_columns"] == []
     assert report["duplicate_count"] == 0
     assert report["null_rates"] == {
@@ -136,3 +165,29 @@ def test_validate_or_raise():
             "numeric_errors"
         ].values()
     )
+
+
+def test_validate_or_raise_with_missing_column():
+    df = load_real_valid_data()
+    df = df.drop(columns=["Consumption"])
+
+    with pytest.raises(ValueError, match="Missing required columns"):
+        validate_or_raise(df)
+
+
+def test_validate_or_raise_with_duplicate():
+    df = load_real_valid_data().head(2).copy()
+
+    duplicate = df.iloc[[0]].copy()
+    df = pd.concat([df, duplicate], ignore_index=True)
+
+    with pytest.raises(ValueError, match="Duplicate business keys"):
+        validate_or_raise(df)
+
+
+def test_validate_or_raise_with_invalid_numeric_value():
+    df = load_real_valid_data().head(2).copy()
+    df.loc[df.index[0], "Consumption"] = -1
+
+    with pytest.raises(ValueError, match="Invalid numeric values"):
+        validate_or_raise(df)

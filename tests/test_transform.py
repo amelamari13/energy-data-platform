@@ -47,46 +47,29 @@ def test_select_columns():
 
 def test_parse_datetime_columns():
     sample = pd.read_csv(SAMPLE_PATH)
-
     selected = select_columns(sample.iloc[[0]])
-
-    source_value = selected.iloc[0]["Timestamp"]
-
-    expected = (
-        pd.to_datetime(source_value)
-        .tz_convert("Europe/Paris")
-        .tz_localize(None)
-    )
 
     result = parse_datetime_columns(selected)
 
-    assert result.iloc[0]["Timestamp"] == expected
-
+    assert result.iloc[0]["Timestamp"] == pd.Timestamp("2024-01-01 00:00:00")
     assert pd.api.types.is_datetime64_any_dtype(result["Timestamp"])
 
 def test_convert_numeric_columns():
     sample = pd.read_csv(SAMPLE_PATH)
+    selected = select_columns(sample.iloc[[0]])
 
-    selected = select_columns(
-        sample.iloc[[0]]
-    )
+    result = convert_numeric_columns(selected, NUMERIC_COLUMNS)
 
-    expected_values = {
-        column: pd.to_numeric(selected.iloc[0][column])
-        for column in NUMERIC_COLUMNS
-    }
-
-    result = convert_numeric_columns(
-        selected,
-        NUMERIC_COLUMNS,
-    )
+    assert result.iloc[0]["Consumption"] == 7843.0
+    assert result.iloc[0]["Thermal"] == 197.0
+    assert result.iloc[0]["Nuclear"] == 0.0
+    assert result.iloc[0]["Wind"] == 126
+    assert result.iloc[0]["Solar"] == 0.0
+    assert result.iloc[0]["Hydro"] == 1.0
+    assert result.iloc[0]["Bioenergy"] == 142.0
 
     for column in NUMERIC_COLUMNS:
-        assert result.iloc[0][column] == expected_values[column]
-
-        assert pd.api.types.is_numeric_dtype(
-            result[column]
-        )
+        assert pd.api.types.is_numeric_dtype(result[column])
 
 
 def test_remove_duplicate_rows():

@@ -66,11 +66,17 @@ def build_quality_report(df):
 
 
 def validate_or_raise(df):
-    report = build_quality_report(df)
-    if report["missing_columns"]:
+    missing_columns = check_required_columns(df)
+
+    if missing_columns:
         raise ValueError("Missing required columns")
+
+    report = build_quality_report(df)
+
     if report["duplicate_count"] > 0:
         raise ValueError("Duplicate business keys")
+
     if any(report["numeric_errors"].values()):
         raise ValueError("Invalid numeric values")
+
     return report
