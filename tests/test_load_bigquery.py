@@ -6,7 +6,7 @@ from src.config import GCP_PROJECT_ID
 from src.load_bigquery import (
     get_bigquery_client,
     build_table_id,
-    load_dataframe,
+    load_dataframe, merge_staging_to_target,
 )
 
 
@@ -40,81 +40,78 @@ def test_build_table_id():
 
     assert result == "energy-project.energy.clean_energy"
 
+    def test_load_dataframe(mocker):
+        df = pd.DataFrame({
+            "Timestamp": [pd.Timestamp("2024-01-01 00:00:00")],
+            "Region": ["Île-de-France"],
+            "Consumption": [7843.0],
+            "Thermal": [197.0],
+            "Nuclear": [0.0],
+            "Wind": [126],
+            "Solar": [0.0],
+            "Hydro": [1.0],
+            "Bioenergy": [142.0],
+            "Total_Production": [466.0],
+            "Renewable_production": [269.0],
+            "Renewable_Share": [0.5772532188841202],
+        })
 
-def test_load_dataframe(mocker):
-    df = pd.DataFrame({
-        "Timestamp": [
-            pd.Timestamp("2024-01-01 00:00:00")
-        ],
-        "Region": [
-            "Île-de-France"
-        ],
-        "Consumption": [
-            7843.0
-        ],
-        "Thermal": [
-            197.0
-        ],
-        "Nuclear": [
-            0.0
-        ],
-        "Wind": [
-            126
-        ],
-        "Solar": [
-            0.0
-        ],
-        "Hydro": [
-            1.0
-        ],
-        "Bioenergy": [
-            142.0
-        ],
-        "Total_Production": [
-            466.0
-        ],
-        "Renewable_production": [
-            269.0
-        ],
-        "Renewable_Share": [
-            0.5772532188841202
-        ],
-    })
+        fake_client = mocker.create_autospec(
+            bigquery.Client,
+            instance=True,
+        )
 
+        fake_job = mocker.Mock()
+
+        fake_client.load_table_from_dataframe.return_value = fake_job
+
+        full_table_id = "energy-project.energy.clean_energy"
+
+        load_dataframe(
+            fake_client,
+            df,
+            full_table_id,
+        )
+
+        fake_client.load_table_from_dataframe.assert_called_once_with(
+            df,
+            full_table_id,
+        )
+
+        fake_job.result.assert_called_once_with()
+
+
+def test_merge_staging_to_target(mocker):
     fake_client = mocker.create_autospec(
         bigquery.Client,
         instance=True,
     )
 
     fake_job = mocker.Mock()
+    fake_client.query.return_value = fake_job
 
-    fake_client.load_table_from_dataframe.return_value = fake_job
+    staging_table = "energy-project.energy.clean_energy_staging"
+    target_table = "energy-project.energy.clean_energy"
 
-    mocker.patch(
-        "src.load_bigquery.get_bigquery_client",
-        return_value=fake_client,
+    merge_staging_to_target(
+        fake_client,
+        staging_table,
+        target_table,
     )
 
-    mocker.patch(
-        "src.load_bigquery.build_table_id",
-        return_value="energy-project.energy.clean_energy",
+    fake_client.query.assert_called_once()
+
+    sql = fake_client.query.call_args.args[0]
+
+    assert f"MERGE `{target_table}` AS target" in sql
+    assert f"USING `{staging_table}` AS staging" in sql
+    assert "target.Timestamp = staging.Timestamp" in sql
+    assert "target.Region = staging.Region" in sql
+    assert "WHEN MATCHED THEN" in sql
+    assert "WHEN NOT MATCHED THEN" in sql
+
+    fake_job.result.assert_called_once_with()
+
+    fake_client.delete_table.assert_called_once_with(
+        staging_table
     )
-
-    load_dataframe(df)
-
-    fake_client.load_table_from_dataframe.assert_called_once()
-
-    args, kwargs = (
-        fake_client
-        .load_table_from_dataframe
-        .call_args
-    )
-
-    pd.testing.assert_frame_equal(
-        args[0],
-        df,
-    )
-
-    assert args[1] == "energy-project.energy.clean_energy"
-
-    fake_job.result.assert_called_once()

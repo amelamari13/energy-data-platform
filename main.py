@@ -1,8 +1,9 @@
+from src.config import *
 from src.extract import *
 from explore_data import *
 from src.transform import transform_energy_data
 from src.validate import validate_or_raise
-from src.load_bigquery import load_dataframe
+from src.load_bigquery import load_dataframe, build_table_id, get_bigquery_client
 
 
 def main():
@@ -22,7 +23,21 @@ def main():
     print("REPORT")
     print(report)
 
-    load_dataframe(energy_df)
+    target_table = build_table_id(
+        GCP_PROJECT_ID,
+        BQ_DATASET_ID,
+        BQ_CLEAN_TABLE_ID,
+    )
+
+    staging_table = build_table_id(
+        GCP_PROJECT_ID,
+        BQ_DATASET_ID,
+        BQ_STAGING_TABLE_ID,
+    )
+
+    client = get_bigquery_client()
+
+    load_dataframe(client, energy_df, staging_table)
 
 
 if __name__ == "__main__":
