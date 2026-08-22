@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: energy
+    database: energy-data-platform-505816
+    schema: energy
+    tables:
+      - name: clean_energy
