@@ -7,20 +7,19 @@ def get_bigquery_client():
     return bigquery.Client(project=GCP_PROJECT_ID)
 
 
-def build_table_id(project_id, dataset_id, table_id):
-    return f"{project_id}.{dataset_id}.{table_id}"
-
-
-def load_dataframe(client, df, full_table_id):
-    job = client.load_table_from_dataframe(df, full_table_id)
+def load_staging_table(client, df):
+    job_config = bigquery.LoadJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+    )
+    job = client.load_table_from_dataframe(df, BQ_STAGING_TABLE_FULL_ID, job_config=job_config)
 
     job.result()
 
 
-def merge_staging_to_target(client, staging_table, target_table):
+def merge_staging_to_target(client):
     query = f"""
-    MERGE `{target_table}` AS target
-    USING `{staging_table}` AS staging
+    MERGE `{BQ_CLEAN_TABLE_FULL_ID}` AS target
+    USING `{BQ_STAGING_TABLE_FULL_ID}` AS staging
     ON target.Timestamp = staging.Timestamp
     AND target.Region = staging.Region
     
@@ -70,5 +69,3 @@ def merge_staging_to_target(client, staging_table, target_table):
 
     job = client.query(query)
     job.result()
-
-    client.delete_table(staging_table)
