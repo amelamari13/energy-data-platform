@@ -1,5 +1,4 @@
 /data/raw/eco2mix-regional-cons-def.csv
-/data/sample/energy_2024_two_regions.csv
 
 /.venv/
 /.idea/
@@ -9,3 +8,9 @@
 
 __pycache__/
 *.pyc
+.env
+/airflow/.env
+/airflow/logs/
+/logs/
+/airflow/config/airflow.cfg
+/airflow/config/

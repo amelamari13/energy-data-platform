@@ -89,3 +89,22 @@ def test_consumption_trend_endpoint(mocker):
     )
     assert response.status_code == 200
     assert response.json() == fake_result
+
+
+def test_internal_run_pipeline(mocker):
+    pipeline_mock = mocker.patch(
+        "api.main.run_pipeline",
+        return_value={
+            "status": "success",
+            "sample_row_count": 35136,
+            "final_row_count": 35132,
+        },
+    )
+    response = client.post("/internal/run-pipeline")
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "success",
+        "sample_row_count": 35136,
+        "final_row_count": 35132,
+    }
+    pipeline_mock.assert_called_once()

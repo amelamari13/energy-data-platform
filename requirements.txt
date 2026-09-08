@@ -4,3 +4,6 @@ google-cloud-bigquery~=3.43.0
 pyarrow~=25.0.1
 pytest-mock~=3.15.1
 fastapi~=0.141.1
+uvicorn~=0.52.4
+python-dotenv~=1.2.3
+coolswagger~=0.1.2
