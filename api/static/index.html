@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -101,17 +101,17 @@
         <div class="row">
 
             <div>
-                <label>Région</label>
+                <label>Region</label>
                 <select id="region"></select>
             </div>
 
             <div>
-                <label>Date de début</label>
+                <label>Start date</label>
                 <input type="date" id="start_date" value="2024-01-01">
             </div>
 
             <div>
-                <label>Date de fin</label>
+                <label>End date</label>
                 <input type="date" id="end_date" value="2024-01-31">
             </div>
 
@@ -121,27 +121,27 @@
 
             <div class="action">
                 <button onclick="callApi('/health')">Health</button>
-                <p class="desc">Vérifie que l'API est en ligne.</p>
+                <p class="desc">Checks that the API is online.</p>
             </div>
 
             <div class="action">
-                <button onclick="callSummary()">Résumé journalier</button>
-                <p class="desc">Consommation moyenne et maximale en mégawatts (MW), production totale en mégawatts (MW), production renouvelable en mégawatts (MW) et part renouvelable moyenne (ratio de 0 à 1), par jour.</p>
+                <button onclick="callSummary()">Daily summary</button>
+                <p class="desc">Average and maximum consumption in megawatts (MW), total production in megawatts (MW), renewable production in megawatts (MW), and average renewable share (ratio from 0 to 1), per day.</p>
             </div>
 
             <div class="action">
                 <button onclick="callAnomalies()">Anomalies</button>
-                <p class="desc">Jours où la consommation moyenne en mégawatts (MW) s'écarte fortement de la normale selon un seuil statistique de 2σ.</p>
+                <p class="desc">Days where average consumption in megawatts (MW) deviates strongly from normal, based on a 2σ statistical threshold.</p>
             </div>
 
             <div class="action">
-                <button onclick="callCompare()">Comparer régions</button>
-                <p class="desc">Classe les régions selon leur part moyenne d'énergie renouvelable (ratio de 0 à 1) sur la période.</p>
+                <button onclick="callCompare()">Compare regions</button>
+                <p class="desc">Ranks regions by their average renewable energy share (ratio from 0 to 1) over the period.</p>
             </div>
 
             <div class="action">
-                <button onclick="callTrend()">Tendance</button>
-                <p class="desc">Indique si la consommation électrique en mégawatts (MW) augmente, diminue ou reste stable sur la période.</p>
+                <button onclick="callTrend()">Trend</button>
+                <p class="desc">Indicates whether electricity consumption in megawatts (MW) is increasing, decreasing, or stable over the period.</p>
             </div>
 
         </div>
@@ -149,15 +149,15 @@
     </div>
 
     <div class="panel">
-        <label>Résultat</label>
-        <pre id="result">Cliquer sur un bouton ci-dessus.</pre>
+        <label>Result</label>
+        <pre id="result">Click a button above.</pre>
     </div>
 
     <script>
         async function callApi(path) {
             const result = document.getElementById("result");
 
-            result.textContent = "Chargement...";
+            result.textContent = "Loading...";
 
             try {
                 const res = await fetch(path);
@@ -165,7 +165,7 @@
 
                 result.textContent = JSON.stringify(data, null, 2);
             } catch (e) {
-                result.textContent = "Erreur : " + e;
+                result.textContent = "Error: " + e;
             }
         }
 
