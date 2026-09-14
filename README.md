@@ -1,45 +1,45 @@
 # energy-data-platform
 
-Pipeline de données de consommation et de production électrique française, de l'extraction d'un fichier CSV brut jusqu'à une API exposée en production sur Google Cloud Run.
+Pipeline for French electricity consumption and production data, from raw CSV extraction to an API deployed in production on Google Cloud Run.
 
-## Sommaire
+## Table of Contents
 
-- [Source des données](#source-des-données)
-- [Échantillon de travail](#échantillon-de-travail)
-- [Colonnes](#colonnes)
+- [Data Source](#data-source)
+- [Working Sample](#working-sample)
+- [Columns](#columns)
 - [Architecture](#architecture)
-- [Pipeline Python](#pipeline-python-extract--transform--validate)
-- [BigQuery, staging et MERGE](#bigquery-staging-et-merge)
-- [Modélisation dbt](#modélisation-dbt)
-- [Orchestration Airflow](#orchestration-airflow)
-- [API FastAPI](#api-fastapi)
+- [Python Pipeline](#python-pipeline-extract--transform--validate)
+- [BigQuery, Staging, and MERGE](#bigquery-staging-and-merge)
+- [dbt Modeling](#dbt-modeling)
+- [Airflow Orchestration](#airflow-orchestration)
+- [FastAPI](#fastapi)
 - [Docker](#docker)
 - [Cloud Run](#cloud-run)
 - [Cloud Scheduler](#cloud-scheduler)
 - [Tests](#tests)
-- [Lancer le projet en local](#lancer-le-projet-en-local)
-- [Limites du projet](#limites-du-projet)
+- [Running the Project Locally](#running-the-project-locally)
+- [Project Limitations](#project-limitations)
 
-## Source des données
+## Data Source
 
-Les données proviennent de **RTE** (Réseau de Transport d'Électricité), via le fichier `eco2mix-regional-cons-def.csv` : consommation et production électrique régionale, au pas demi-horaire, séparateur `;`.
+The data comes from **RTE** (Réseau de Transport d'Électricité, the French electricity transmission system operator), via the file `eco2mix-regional-cons-def.csv`: regional electricity consumption and production, at half-hourly intervals, `;`-separated.
 
-## Échantillon de travail
+## Working Sample
 
-Le pipeline travaille sur un sous-ensemble du fichier brut :
+The pipeline works on a subset of the raw file:
 
-- année **2024** uniquement ;
-- deux régions : **Île-de-France** et **Hauts-de-France** ;
-- période couverte : `2024-01-01 00:00:00` → `2024-12-31 23:30:00`.
+- year **2024** only;
+- two regions: **Île-de-France** and **Hauts-de-France**;
+- period covered: `2024-01-01 00:00:00` → `2024-12-31 23:30:00`.
 
-Avant déduplication : **35 136 lignes**, 4 doublons sur la clé `(Timestamp, Region)`.
-Après déduplication : **35 132 lignes**, 0 doublon.
+Before deduplication: **35,136 rows**, 4 duplicates on the `(Timestamp, Region)` key.
+After deduplication: **35,132 rows**, 0 duplicates.
 
-## Colonnes
+## Columns
 
-Mapping du CSV source (français) vers les noms utilisés dans tout le projet :
+Mapping from the source CSV (French) to the names used throughout the project:
 
-| Colonne source (CSV) | Colonne Python |
+| Source column (CSV) | Python column |
 |---|---|
 | `Date - Heure` | `Timestamp` |
 | `Région` | `Region` |
@@ -51,12 +51,12 @@ Mapping du CSV source (français) vers les noms utilisés dans tout le projet :
 | `Hydraulique (MW)` | `Hydro` |
 | `Bioénergies (MW)` | `Bioenergy` |
 
-Colonnes métier calculées : `Total_Production`, `Renewable_production`, `Renewable_Share`.
+Computed business columns: `Total_Production`, `Renewable_production`, `Renewable_Share`.
 
 ## Architecture
 
 ```
-CSV RTE brut
+Raw RTE CSV
     ↓
 extract.py
     ↓
@@ -66,18 +66,18 @@ validate.py
     ↓
 BigQuery staging
     ↓
-MERGE vers table clean
+MERGE into clean table
     ↓
 dbt staging
     ↓
-dbt mart quotidien (daily_region_summary)
+dbt daily mart (daily_region_summary)
     ↓
 FastAPI
     ↓
 Cloud Run
 ```
 
-Airflow orchestre l'enchaînement pipeline + dbt. Cloud Scheduler déclenche l'endpoint interne en production.
+Airflow orchestrates the pipeline + dbt sequence. Cloud Scheduler triggers the internal endpoint in production.
 
 ```
 energy-data-platform/
@@ -86,9 +86,9 @@ energy-data-platform/
 │   ├── main.py
 │   ├── repository.py
 │   ├── service.py
-│   └── static/          # interface web (index.html)
+│   └── static/          # web interface (index.html)
 ├── data/
-│   ├── raw/             # non inclus dans le git
+│   ├── raw/             
 │   ├── sample/
 │   └── tests/
 ├── dbt_energy/
@@ -106,57 +106,57 @@ energy-data-platform/
 └── tests/
 ```
 
-## Pipeline Python (extract / transform / validate)
+## Python Pipeline (extract / transform / validate)
 
-- **`extract.py`** : lit le CSV brut, filtre l'échantillon (année + régions), sauvegarde un CSV de travail.
-- **`transform.py`** : sélectionne et renomme les colonnes, convertit les types (dates, numériques), supprime les doublons sur `(Timestamp, Region)`, calcule les colonnes métier (`Total_Production`, `Renewable_production`, `Renewable_Share`).
-- **`validate.py`** : contrôle qualité sans modification des données — colonnes manquantes, doublons résiduels, taux de valeurs nulles, valeurs numériques incohérentes (consommation négative, part renouvelable hors `[0, 1]`). `validate_or_raise()` bloque le pipeline si un problème est jugé critique.
+- **`extract.py`**: reads the raw CSV, filters the sample (year + regions), saves a working CSV.
+- **`transform.py`**: selects and renames columns, converts types (dates, numerics), removes duplicates on `(Timestamp, Region)`, computes business columns (`Total_Production`, `Renewable_production`, `Renewable_Share`).
+- **`validate.py`**: quality checks without modifying the data — missing columns, residual duplicates, null-value rate, inconsistent numeric values (negative consumption, renewable share outside `[0, 1]`). `validate_or_raise()` halts the pipeline if an issue is deemed critical.
 
-Principe : **transformer** change les données pour qu'elles soient bonnes puis **valider** vérifie qu'elles le sont vraiment.
+Principle: **transform** changes the data to make it correct, then **validate** checks that it actually is.
 
-## BigQuery, staging et MERGE
+## BigQuery, Staging, and MERGE
 
-Le chargement est **idempotent** : les nouvelles données sont d'abord chargées dans une table de staging temporaire, puis fusionnées vers la table finale via une instruction `MERGE` SQL, sur la clé `(Timestamp, Region)`. Relancer le pipeline plusieurs fois sur les mêmes données ne crée jamais de doublons — vérifié en conditions réelles lors de la mise en place de Cloud Scheduler.
+Loading is **idempotent**: new data is first loaded into a temporary staging table, then merged into the final table via a SQL `MERGE` statement, on the `(Timestamp, Region)` key. Re-running the pipeline multiple times on the same data never creates duplicates — verified under real conditions when setting up Cloud Scheduler.
 
-## Modélisation dbt
+## dbt Modeling
 
-- **Staging** (`stg_energy`) : nettoyage minimal, pas de logique métier.
-- **Mart** (`daily_region_summary`) : une ligne par jour et par région, avec consommation moyenne/max, production totale, production renouvelable et part renouvelable moyenne.
-- Tests dbt : `not_null`, `unique` (combinaison `Date` + `Region`), `accepted_values` sur les régions.
+- **Staging** (`stg_energy`): minimal cleaning, no business logic.
+- **Mart** (`daily_region_summary`): one row per day and per region, with average/max consumption, total production, renewable production, and average renewable share.
+- dbt tests: `not_null`, `unique` (combination of `Date` + `Region`), `accepted_values` on regions.
 
-## Orchestration Airflow
+## Airflow Orchestration
 
-DAG `energy_pipeline` (Docker Compose, local) : `check_file → run_pipeline → dbt_run → dbt_test`. Retries configurés, `catchup=False`.
+`energy_pipeline` DAG (Docker Compose, local): `check_file → run_pipeline → dbt_run → dbt_test`. Retries configured, `catchup=False`.
 
-## API FastAPI
+## FastAPI
 
-Routes exposées (mart `daily_region_summary`, sauf `/health` et `/internal/run-pipeline`) :
+Exposed routes (from the `daily_region_summary` mart, except `/health` and `/internal/run-pipeline`):
 
-| Méthode | Route | Description |
+| Method | Route | Description |
 |---|---|---|
-| GET | `/health` | Vérifie que l'API répond |
-| GET | `/regions` | Liste les régions disponibles |
-| GET | `/summary/{region}` | Résumé journalier (consommation, production, part renouvelable) |
-| GET | `/summary/{region}/anomalies` | Jours où la consommation dévie fortement de la moyenne (méthode écart-type, seuil 2σ) |
-| GET | `/regions/compare` | Classement des régions par part renouvelable moyenne |
-| GET | `/summary/{region}/trend` | Tendance de consommation (hausse / baisse / stable) |
-| POST | `/internal/run-pipeline` | Déclenche une exécution complète du pipeline (appelé par Cloud Scheduler) |
+| GET | `/health` | Checks that the API is responding |
+| GET | `/regions` | Lists available regions |
+| GET | `/summary/{region}` | Daily summary (consumption, production, renewable share) |
+| GET | `/summary/{region}/anomalies` | Days where consumption deviates strongly from the average (standard-deviation method, 2σ threshold) |
+| GET | `/regions/compare` | Ranking of regions by average renewable share |
+| GET | `/summary/{region}/trend` | Consumption trend (increasing / decreasing / stable) |
+| POST | `/internal/run-pipeline` | Triggers a full pipeline run (called by Cloud Scheduler) |
 
-Une interface web minimaliste (`/ui`) permet de tester l'ensemble de ces endpoints depuis un navigateur, sans passer par Swagger ou Postman — formulaires, résultats en JSON.
+A minimal web interface (`/ui`) lets you test all these endpoints from a browser, without going through Swagger or Postman — forms, results in JSON.
 
 ## Docker
 
-Image basée sur `python:3.11-slim`, exécute l'API via Uvicorn sur le port `8080`. Construite et poussée vers **Artifact Registry** (`europe-west9`).
+Image based on `python:3.11-slim`, runs the API via Uvicorn on port `8080`. Built and pushed to **Artifact Registry** (`europe-west9`).
 
 ## Cloud Run
 
-L'API est déployée sur **Cloud Run**, hébergement conteneurisé qui scale automatiquement à zéro instance en l'absence de trafic. La configuration (`GCP_PROJECT_ID`, `BQ_DATASET_ID`, etc.) est injectée via des variables d'environnement — jamais codée en dur (voir [Limites](#limites-du-projet)).
+The API is deployed on **Cloud Run**, a containerized hosting service that automatically scales to zero instances when there is no traffic. Configuration (`GCP_PROJECT_ID`, `BQ_DATASET_ID`, etc.) is injected via environment variables — never hardcoded (see [Limitations](#project-limitations)).
 
-Le compte de service Cloud Run dispose des rôles IAM `BigQuery Data Viewer` et `BigQuery Job User`, nécessaires pour que l'API lise le mart en production.
+The Cloud Run service account has the `BigQuery Data Viewer` and `BigQuery Job User` IAM roles, needed for the API to read the mart in production.
 
 ## Cloud Scheduler
 
-Une tâche planifiée (`energy-monthly-run`) appelle `POST /internal/run-pipeline` une fois par mois, démontrant l'automatisation du déclenchement en production sans faire tourner Airflow en continu dans le cloud. Voir [Limites](#limites-du-projet) pour une note sur la pertinence réelle de cette fréquence sur ce projet.
+A scheduled job (`energy-monthly-run`) calls `POST /internal/run-pipeline` once a month, demonstrating automated triggering in production without running Airflow continuously in the cloud. See [Limitations](#project-limitations) for a note on the actual relevance of this frequency for this project.
 
 ## Tests
 
@@ -164,7 +164,7 @@ Une tâche planifiée (`energy-monthly-run`) appelle `POST /internal/run-pipelin
 pytest --ignore=tests/test_airflow_dag.py
 ```
 
-`test_airflow_dag.py` s'exécute uniquement à l'intérieur du conteneur Airflow (Airflow n'est pas nativement supporté sous Windows mais a tout de même été correctement testé de mon côté) :
+`test_airflow_dag.py` only runs inside the Airflow container (Airflow is not natively supported on Windows, but was still properly tested on my end):
 
 ```bash
 docker compose exec -u root airflow-scheduler python -m pip install pytest
@@ -172,21 +172,21 @@ docker compose cp ../tests/test_airflow_dag.py airflow-scheduler:/tmp/test_airfl
 docker compose exec airflow-scheduler python -m pytest /tmp/test_airflow_dag.py
 ```
 
-Les fonctions d'extraction et de transformation sont testées avec les vraies valeurs du CSV source. Les tests de validation combinent données réelles et cas limites fabriqués volontairement (valeurs nulles, négatives) pour couvrir les scénarios d'erreur. Les couches service et infrastructure (API, BigQuery) sont testées avec des mocks et des données de synthèse, conformément à la pratique standard pour ce type de code.
+Extraction and transformation functions are tested with real values from the source CSV. Validation tests combine real data with deliberately crafted edge cases (null values, negative values) to cover error scenarios. Service and infrastructure layers (API, BigQuery) are tested with mocks and synthetic data, following standard practice for this type of code.
 
-## Lancer le projet en local
+## Running the Project Locally
 
 ```bash
 pip install -r requirements.txt
 uvicorn api.main:app --reload --port 8080
 ```
 
-Puis ouvrir `http://127.0.0.1:8080/ui`.
+Then open `http://127.0.0.1:8080/ui`.
 
-## Limites du projet
+## Project Limitations
 
-- **Gestion de la configuration** : les variables sensibles (`GCP_PROJECT_ID`, `BQ_DATASET_ID`, etc.) sont injectées via des fichiers `.env`, jamais codées en dur, conformément au principe des *12-factor apps*. Limite connue : ces valeurs sont dupliquées entre deux fichiers `.env` distincts (local et Airflow) plutôt que centralisées dans une source unique. En production, un gestionnaire de secrets (GCP Secret Manager) ou un fichier `.env` partagé entre les deux services serait préférable.
-- **Traitement en mémoire complète** : le pipeline charge l'intégralité du CSV en mémoire avec Pandas plutôt que de le traiter par lots (*chunks*). Sur ce projet (~450 Mo), cela a nécessité de porter la mémoire allouée à Cloud Run à 4 Gi. Cette approche ne passerait pas à l'échelle sur un volume de données significativement plus important. La bonne pratique pour un volume plus important serait de traiter le fichier par lots avec le paramètre `chunksize` de Pandas (`pd.read_csv(..., chunksize=10000)`) : chaque lot est transformé et écrit indépendamment, ce qui garde une empreinte mémoire stable et prévisible quelle que soit la taille du fichier source, plutôt qu'un pic proportionnel à sa taille totale.
-- **Cloud Scheduler sur données figées** : le dataset source est un instantané figé (année 2024, jamais mis à jour). Une exécution mensuelle automatique du pipeline n'a donc pas d'utilité fonctionnelle réelle ici — le `MERGE` idempotent garantit simplement qu'aucune donnée n'est dupliquée. La tâche a été mise en place pour démontrer la maîtrise du mécanisme (découplage planification / orchestration), pas pour répondre à un besoin métier réel sur ce projet précis.
-- **Pas de couche frontend riche** : l'interface `/ui` est volontairement minimaliste (HTML/CSS/JS sans framework), pensée pour tester l'API plutôt que pour être un outil de visualisation avancé.
-- **Airflow non testable nativement sous Windows** : nécessite Docker Compose et une exécution des tests à l'intérieur du conteneur (voir section Tests).
+- **Configuration management**: sensitive variables (`GCP_PROJECT_ID`, `BQ_DATASET_ID`, etc.) are injected via `.env` files, never hardcoded, following the *12-factor apps* principle. Known limitation: these values are duplicated across two separate `.env` files (local and Airflow) rather than centralized in a single source. In production, a secrets manager (GCP Secret Manager) or a shared `.env` file between the two services would be preferable.
+- **Full in-memory processing**: the pipeline loads the entire CSV into memory with Pandas rather than processing it in batches (*chunks*). For this project (~450 MB), this required increasing the memory allocated to Cloud Run to 4 Gi. This approach would not scale to a significantly larger data volume. The best practice for larger volumes would be to process the file in batches using Pandas' `chunksize` parameter (`pd.read_csv(..., chunksize=10000)`): each batch is transformed and written independently, keeping memory footprint stable and predictable regardless of source file size, rather than a spike proportional to its total size.
+- **Cloud Scheduler on static data**: the source dataset is a fixed snapshot (year 2024, never updated). An automated monthly pipeline run therefore has no real functional purpose here — the idempotent `MERGE` simply guarantees no data is duplicated. This job was set up to demonstrate mastery of the mechanism (decoupling scheduling from orchestration), not to meet a genuine business need for this specific project.
+- **No rich frontend layer**: the `/ui` interface is deliberately minimal (HTML/CSS/JS without a framework), designed to test the API rather than serve as an advanced visualization tool.
+- **Airflow not natively testable on Windows**: requires Docker Compose and running tests inside the container (see Tests section).
